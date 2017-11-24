@@ -2,21 +2,38 @@
 
 import tensorflow as tf
 import numpy as np
-import argparse
+import argparse, os, time
 import dataset
 import statNet1
 
 class Trainer:
 
-    def __init__(self, network):
+    def __init__(self, network, path_for_logging):
 
         self._net = network
 
-        self._training_dataset = dataset.StatoilTrainingDataset()
+        self._training_dataset = dataset.StatoilTrainingDataset(augment_data = True)
+
+        if path_for_logging is not None:
+            if not os.path.exists(path_for_logging):
+                os.mkdir(path_for_logging)
+            self._train_stats_filename = os.path.join(path_for_logging, 'train.dat')
+            self._validation_stats_filename = os.path.join(path_for_logging, 'validation.dat')
+            # Write headers
+            f_train = open(self._train_stats_filename, 'wt')
+            f_train.write('#examples trained on\tcross entropy\n')
+            f_train.close()
+            f_validation = open(self._validation_stats_filename, 'wt')
+            f_validation.write('#examples trained on\tcross entropy\taccuracy\n')
+            f_validation.close()
+        else:
+            self._train_stats_filename = None
+            self._validation_stats_filename = None
 
         ## Setup placeholers and costs
         self._input_image = tf.placeholder(shape = [None, 75, 75, 2], dtype=tf.float32)
-        self._network_logit = self._net.connect(self._input_image)
+        self._keep_prob = tf.placeholder(shape = (), dtype=tf.float32)
+        self._network_logit = self._net.connect(self._input_image, self._keep_prob)
         self._ship_logit = 1.0 - self._network_logit
 
         # Ordering must be this way around because label = 0 for ship, 1 for iceberg
@@ -34,32 +51,48 @@ class Trainer:
         self._smoothing_decay = 0.95
         self._smoothed_cross_entropy = None
         self._num_examples_trained_on = 0
+        self._training_seconds = 0.0
+        self._validation_seconds = 0.0
 
         ## Initialize the session
         self._sess = tf.Session()
         self._sess.run(tf.global_variables_initializer())
 
-    def update_stats(self, training_cross_entropy, num_trained_on):
+    def update_stats(self, training_cross_entropy):
         if self._smoothed_cross_entropy is None:
             self._smoothed_cross_entropy = training_cross_entropy
         else:
             self._smoothed_cross_entropy = self._smoothed_cross_entropy * self._smoothing_decay \
                                            + training_cross_entropy * (1.0 - self._smoothing_decay)
-        self._num_examples_trained_on += num_trained_on
 
     def print_training_stats(self):
         print('Trained on {} images ({} epochs)'.format(self._num_examples_trained_on,
                                                         self._num_examples_trained_on / self._training_dataset._N_train))
         print('Smoothed cross entropy: {}'.format(self._smoothed_cross_entropy))
 
+        if self._train_stats_filename is not None:
+            f_train = open(self._train_stats_filename, 'at')
+            f_train.write('{}\t{}\n'.format(self._num_examples_trained_on, self._smoothed_cross_entropy))
+            f_train.close()
+
     def train_batch(self, batch_size):
+
+        start_time = time.time()
 
         image_batch, label_batch = self._training_dataset.get_next_training_batch(batch_size)
         _, ce = self._sess.run([self._train_step, self._cross_entropy],
-                                feed_dict = {self._input_image : image_batch, self._y_is_iceberg : label_batch})
-        self.update_stats(ce, batch_size)
+                                feed_dict = {self._input_image : image_batch, self._y_is_iceberg : label_batch,
+                                             self._keep_prob : 0.8})
+
+        self._num_examples_trained_on += batch_size
+        self.update_stats(ce)
+
+        end_time = time.time()
+        self._training_seconds += (end_time - start_time)
 
     def get_and_print_validation_stats(self, batch_size):
+
+        start_time = time.time()
 
         batches = self._training_dataset.get_validation_set(batch_size)
 
@@ -68,7 +101,8 @@ class Trainer:
         ce = 0
         for (image_batch, label_batch) in batches:
             b_acc, b_ce = self._sess.run([self._accuracy, self._cross_entropy],
-                                         feed_dict={self._input_image : image_batch, self._y_is_iceberg : label_batch})
+                                         feed_dict={self._input_image : image_batch, self._y_is_iceberg : label_batch,
+                                                    self._keep_prob : 1.0})
             b_n = image_batch.shape[0]
             acc += b_n*b_acc
             ce += b_n*b_ce
@@ -79,10 +113,23 @@ class Trainer:
         print('Validation cross-entropy: {}'.format(ce))
         print('Validation accuracy: {}'.format(acc))
 
+        if self._validation_stats_filename is not None:
+            f_validation = open(self._validation_stats_filename, 'at')
+            f_validation.write('{}\t{}\t{}\n'.format(self._num_examples_trained_on, ce, acc))
+            f_validation.close()
+
+        end_time = time.time()
+        self._validation_seconds += (end_time - start_time)
+
+    def print_times(self):
+        print('Time spent training: {} seconds'.format(self._training_seconds))
+        print('Time spent validating: {} seconds'.format(self._validation_seconds))
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('net', type=str, choices = ['statNet1'])
     parser.add_argument('--epochs', type=int, default = 10)
+    parser.add_argument('--logdir', type=str, default = './logs')
     args = parser.parse_args()
 
     if args.net == 'statNet1':
@@ -91,7 +138,7 @@ if __name__ == '__main__':
         raise ValueError('Net type {} is unknown.'.format(args.net))
 
     batch_size = 32
-    trainer = Trainer(net)
+    trainer = Trainer(net, args.logdir)
 
     for i in range(500):
         trainer.train_batch(batch_size)
@@ -99,5 +146,7 @@ if __name__ == '__main__':
         if i%10 == 0:
             trainer.print_training_stats()
 
-        if i%100 == 0:
+        if i%25 == 0:
             trainer.get_and_print_validation_stats(batch_size)
+
+    trainer.print_times()

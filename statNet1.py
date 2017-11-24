@@ -51,7 +51,7 @@ class StatNet1:
 
             self._built = True
 
-    def connect(self, x):
+    def connect(self, x, keep_prob):
 
         if not self._built:
             self.build()
@@ -64,9 +64,11 @@ class StatNet1:
         self._h_pool_2_flat = tf.reshape(self._h_pool_2, shape = [-1, self._pooled_flat_size])
 
         self._h_fc_1 = tf.nn.relu(tf.matmul(self._h_pool_2_flat, self._W_fc_1) + self._b_fc_1)
-        self._h_fc_2 = tf.nn.relu(tf.matmul(self._h_fc_1, self._W_fc_2) + self._b_fc_2)
+        self._h_fc_1_dropped = tf.nn.dropout(self._h_fc_1, keep_prob)
+        self._h_fc_2 = tf.nn.relu(tf.matmul(self._h_fc_1_dropped, self._W_fc_2) + self._b_fc_2)
+        self._h_fc_2_dropped = tf.nn.dropout(self._h_fc_2, keep_prob)
 
-        self._output_logit = tf.matmul(self._h_fc_2, self._W_fc_3) + self._b_fc_3
+        self._output_logit = tf.matmul(self._h_fc_2_dropped, self._W_fc_3) + self._b_fc_3
 
         return self._output_logit
 

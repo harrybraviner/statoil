@@ -26,16 +26,23 @@ class StatoilDataset:
         m = np.mean(image)
         return (image - m)
 
+    def _reflect_image_horizontally(image):
+        return np.flip(image, axis=1)
+
+    def _reflect_image_vertically(image):
+        return np.flip(image, axis=0)
 
 class StatoilTrainingDataset(StatoilDataset):
 
-    def __init__(self, filename='./data/train.json', zero_mean_images = True, validation_fraction = 0.3, mini_dataset = False):
+    def __init__(self, filename='./data/train.json', zero_mean_images = True, validation_fraction = 0.3, mini_dataset = False, augment_data = False):
         super(StatoilTrainingDataset, self).__init__(filename, mini_dataset)
 
         self._N_total = len(self._band1_images)
         self._N_val = int(validation_fraction * self._N_total)
         self._N_train = self._N_total - self._N_val
         self._zero_mean_images = zero_mean_images
+
+        self._augment = augment_data
 
         self._training_cursor = 0
 
@@ -47,6 +54,11 @@ class StatoilTrainingDataset(StatoilDataset):
                       np.reshape(band2_flat, newshape = [num_rows, num_cols])],
                      axis = 2)
         label = self._labels[index]
+        if self._augment:
+            if np.random.randint(low=0, high=2) == 1:
+                both_bands = StatoilDataset._reflect_image_horizontally(both_bands)
+            if np.random.randint(low=0, high=2) == 1:
+                both_bands = StatoilDataset._reflect_image_vertically(both_bands)
         return both_bands, label
 
     def get_next_training_image_and_label(self):
