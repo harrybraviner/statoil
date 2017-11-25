@@ -2,21 +2,26 @@
 
 import tensorflow as tf
 import numpy as np
-import argparse, os, time
+import argparse, os, time, json
+from math import ceil
 import dataset
 import statNet1
 
 class Trainer:
 
-    def __init__(self, network, path_for_logging):
+    def __init__(self, network, params, path_for_logging):
 
         self._net = network
+        self._dropout_keep_prob = params['net_params']['dropout_keep_prob']
 
-        self._training_dataset = dataset.StatoilTrainingDataset(augment_data = True)
+        self._training_dataset = dataset.StatoilTrainingDataset(params['dataset_params'])
 
         if path_for_logging is not None:
             if not os.path.exists(path_for_logging):
                 os.mkdir(path_for_logging)
+            f_params = open(os.path.join(path_for_logging, 'params'), 'w')
+            json.dump(params, f_params, indent=4)
+            f_params.close()
             self._train_stats_filename = os.path.join(path_for_logging, 'train.dat')
             self._validation_stats_filename = os.path.join(path_for_logging, 'validation.dat')
             # Write headers
@@ -82,7 +87,7 @@ class Trainer:
         image_batch, label_batch = self._training_dataset.get_next_training_batch(batch_size)
         _, ce = self._sess.run([self._train_step, self._cross_entropy],
                                 feed_dict = {self._input_image : image_batch, self._y_is_iceberg : label_batch,
-                                             self._keep_prob : 0.8})
+                                             self._keep_prob : self._dropout_keep_prob})
 
         self._num_examples_trained_on += batch_size
         self.update_stats(ce)
@@ -132,15 +137,32 @@ if __name__ == '__main__':
     parser.add_argument('--logdir', type=str, default = './logs')
     args = parser.parse_args()
 
+    params = {
+        'dataset_params' : {
+            'flips' : True,
+        },
+        'net_params' : {
+            'conv1_size' : 5,
+            'conv1_channels' : 64,
+            'conv2_size' : 5,
+            'conv2_channels' : 64,
+            'fc1_size' : 1024,
+            'fc2_size' : 256,
+            'dropout_keep_prob': 0.5
+        }
+    }
+
     if args.net == 'statNet1':
-        net = statNet1.StatNet1()
+        net = statNet1.StatNet1(params['net_params'])
     else:
         raise ValueError('Net type {} is unknown.'.format(args.net))
 
     batch_size = 32
-    trainer = Trainer(net, args.logdir)
+    trainer = Trainer(net, params, args.logdir)
+    batches_per_epoch = trainer._training_dataset._N_train / batch_size
 
-    for i in range(500):
+    print('Will train for {} batches.'.format(ceil(args.epochs * batches_per_epoch)))
+    for i in range(ceil(args.epochs * batches_per_epoch)):
         trainer.train_batch(batch_size)
         
         if i%10 == 0:

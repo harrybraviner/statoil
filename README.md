@@ -17,7 +17,4 @@ Dropout to be used for training in fully connected layers.
 
 # ToDo
 
-* Record training performance in a file.
-* Record parameters used to train the net.
-* Add data-augmentation to training.
-* Add dropout into the net.
+* Add noise augmentation of data.

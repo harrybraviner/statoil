@@ -34,19 +34,19 @@ class StatoilDataset:
 
 class StatoilTrainingDataset(StatoilDataset):
 
-    def __init__(self, filename='./data/train.json', zero_mean_images = True, validation_fraction = 0.3, mini_dataset = False, augment_data = False):
+    def __init__(self, params, filename='./data/train.json', zero_mean_images = True, validation_fraction = 0.3, mini_dataset = False):
         super(StatoilTrainingDataset, self).__init__(filename, mini_dataset)
+
+        self._flips = params['flips']
 
         self._N_total = len(self._band1_images)
         self._N_val = int(validation_fraction * self._N_total)
         self._N_train = self._N_total - self._N_val
         self._zero_mean_images = zero_mean_images
 
-        self._augment = augment_data
-
         self._training_cursor = 0
 
-    def get_image_and_label_from_index(self, index):
+    def get_image_and_label_from_index(self, validation, index):
         band1_flat = StatoilDataset._make_image_zero_mean(self._band1_images[index])
         band2_flat = StatoilDataset._make_image_zero_mean(self._band2_images[index])
         both_bands = \
@@ -54,7 +54,7 @@ class StatoilTrainingDataset(StatoilDataset):
                       np.reshape(band2_flat, newshape = [num_rows, num_cols])],
                      axis = 2)
         label = self._labels[index]
-        if self._augment:
+        if self._flips and not validation:
             if np.random.randint(low=0, high=2) == 1:
                 both_bands = StatoilDataset._reflect_image_horizontally(both_bands)
             if np.random.randint(low=0, high=2) == 1:
@@ -62,7 +62,7 @@ class StatoilTrainingDataset(StatoilDataset):
         return both_bands, label
 
     def get_next_training_image_and_label(self):
-        both_bands, label = self.get_image_and_label_from_index(self._training_cursor)
+        both_bands, label = self.get_image_and_label_from_index(validation=False, index=self._training_cursor)
         self._training_cursor = (self._training_cursor + 1) % self._N_train
         return both_bands, label
 
@@ -76,7 +76,8 @@ class StatoilTrainingDataset(StatoilDataset):
         while validation_cursor < self._N_total:
             num_left = self._N_total - validation_cursor
             num_to_take = batch_size if num_left >= batch_size else num_left
-            images_and_labels = [self.get_image_and_label_from_index(i) for i in range(validation_cursor, validation_cursor + num_to_take)]
+            images_and_labels = [self.get_image_and_label_from_index(validation = True, index=i)
+                                 for i in range(validation_cursor, validation_cursor + num_to_take)]
             batches += [(np.array([im for (im, _) in images_and_labels]), np.array([l for (_, l) in images_and_labels]))]
             validation_cursor += num_to_take
         return batches

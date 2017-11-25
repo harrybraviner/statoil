@@ -12,10 +12,11 @@ def _make_bias(shape):
 
 class StatNet1:
 
-    def __init__(self, image_shape = [75, 75, 2]):
+    def __init__(self, params, image_shape = [75, 75, 2]):
         
         self._built = False
         self._input_shape = image_shape
+        self._params = params.copy()
 
         self.build()
 
@@ -24,13 +25,13 @@ class StatNet1:
         if not self._built:
             input_shape = self._input_shape
 
-            conv_layer_1_size = 5
-            conv_layer_1_channels = 32
-            conv_layer_2_size = 5
-            conv_layer_2_channels = 32
+            conv_layer_1_size     = self._params['conv1_size']
+            conv_layer_1_channels = self._params['conv1_channels']
+            conv_layer_2_size     = self._params['conv2_size']
+            conv_layer_2_channels = self._params['conv2_channels']
 
-            fc_layer_1_size = 1024
-            fc_layer_2_size = 128
+            fc_layer_1_size = self._params['fc1_size']
+            fc_layer_2_size = self._params['fc2_size']
 
             self._W_conv_1 = _make_weight([conv_layer_1_size, conv_layer_1_size, input_shape[2], conv_layer_1_channels])
             self._b_conv_1 = _make_bias([conv_layer_1_channels])
