@@ -34,21 +34,24 @@ class StatoilDataset:
 
 class StatoilTrainingDataset(StatoilDataset):
 
-    def __init__(self, params, filename='./data/train.json', zero_mean_images = True, validation_fraction = 0.3, mini_dataset = False):
+    def __init__(self, params, filename='./data/train.json', validation_fraction = 0.3, mini_dataset = False):
         super(StatoilTrainingDataset, self).__init__(filename, mini_dataset)
 
         self._flips = params['flips']
+        self._zero_mean_images = params['demean']
 
         self._N_total = len(self._band1_images)
         self._N_val = int(validation_fraction * self._N_total)
         self._N_train = self._N_total - self._N_val
-        self._zero_mean_images = zero_mean_images
 
         self._training_cursor = 0
 
     def get_image_and_label_from_index(self, validation, index):
-        band1_flat = StatoilDataset._make_image_zero_mean(self._band1_images[index])
-        band2_flat = StatoilDataset._make_image_zero_mean(self._band2_images[index])
+        band1_flat = self._band1_images[index]
+        band2_flat = self._band2_images[index]
+        if self._zero_mean_images:
+            band1_flat = StatoilDataset._make_image_zero_mean(self._band1_images[index])
+            band2_flat = StatoilDataset._make_image_zero_mean(self._band2_images[index])
         both_bands = \
             np.stack([np.reshape(band1_flat, newshape = [num_rows, num_cols]),
                       np.reshape(band2_flat, newshape = [num_rows, num_cols])],
@@ -84,6 +87,9 @@ class StatoilTrainingDataset(StatoilDataset):
 
 class DatasetTests(unittest.TestCase):
 
+    _example_params = {'flips' : False,
+                       'demean' : True}
+
     def test_make_image_zero_mean(self):
 
         im = np.array([[1,2], [3,4], [5,6]])
@@ -93,7 +99,7 @@ class DatasetTests(unittest.TestCase):
 
     def test_shape_of_training_images(self):
 
-        train = StatoilTrainingDataset(mini_dataset = True)
+        train = StatoilTrainingDataset(params = DatasetTests._example_params, mini_dataset = True)
 
         im1, l1 = train.get_next_training_image_and_label()
         self.assertEqual(im1.shape, (75, 75, 2))
@@ -106,7 +112,7 @@ class DatasetTests(unittest.TestCase):
 
     def test_shape_of_training_batch(self):
 
-        train = StatoilTrainingDataset(mini_dataset = True)
+        train = StatoilTrainingDataset(params = DatasetTests._example_params, mini_dataset = True)
 
         batch_im, batch_labels = train.get_next_training_batch(10)
 
@@ -115,7 +121,7 @@ class DatasetTests(unittest.TestCase):
 
     def test_shape_of_validation_set(self):
 
-        train = StatoilTrainingDataset(mini_dataset = True)
+        train = StatoilTrainingDataset(params = DatasetTests._example_params, mini_dataset = True)
 
         validation_set = train.get_validation_set(batch_size = 5)
 

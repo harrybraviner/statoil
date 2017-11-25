@@ -140,6 +140,7 @@ if __name__ == '__main__':
     params = {
         'dataset_params' : {
             'flips' : True,
+            'demean' : True
         },
         'net_params' : {
             'conv1_size' : 5,
