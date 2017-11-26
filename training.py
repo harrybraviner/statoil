@@ -140,16 +140,18 @@ if __name__ == '__main__':
     params = {
         'dataset_params' : {
             'flips' : True,
-            'demean' : True
+            'demean' : True,
+            'exponentiate_base' : 1.08,
+            'add_noise' : False,
         },
         'net_params' : {
             'conv1_size' : 5,
-            'conv1_channels' : 64,
+            'conv1_channels' : 32,
             'conv2_size' : 5,
-            'conv2_channels' : 64,
+            'conv2_channels' : 32,
             'fc1_size' : 1024,
-            'fc2_size' : 256,
-            'dropout_keep_prob': 0.5
+            'fc2_size' : 128,
+            'dropout_keep_prob': 0.8
         }
     }
 
