@@ -1,0 +1,17 @@
+{
+    "net_params": {
+        "conv1_size": 5,
+        "conv2_size": 5,
+        "conv1_channels": 32,
+        "dropout_keep_prob": 0.8,
+        "fc1_size": 1024,
+        "conv2_channels": 32,
+        "fc2_size": 128
+    },
+    "dataset_params": {
+        "exponentiate_base": 1.08,
+        "demean": false,
+        "flips": false,
+        "add_noise": false
+    }
+}
