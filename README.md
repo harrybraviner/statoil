@@ -25,7 +25,7 @@ Dropout to be used for training in fully connected layers.
 
 ## Experimentation
 
-* Does the exponentiation help?
+* Why do cross entropy and accuracy on the validation set seem to be uncorrelated?
 * Do the flips improve things?
 * Does noise augmentation improve things?
 * Does dropout improve things?

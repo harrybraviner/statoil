@@ -31,6 +31,13 @@ class Trainer:
             f_validation = open(self._validation_stats_filename, 'wt')
             f_validation.write('#examples trained on\tcross entropy\taccuracy\n')
             f_validation.close()
+
+            # Temporary hack - remove later
+            self._validation_paths = [os.path.join(path_for_logging, 'val{}.dat'.format(i)) for i in range(1,6)]
+            for x in self._validation_paths:
+                f = open(x, 'wt')
+                f.write('#logit for iceberg\n')
+                f.close()
         else:
             self._train_stats_filename = None
             self._validation_stats_filename = None
@@ -104,6 +111,9 @@ class Trainer:
         n = 0
         acc = 0
         ce = 0
+
+        batch_zero = True
+
         for (image_batch, label_batch) in batches:
             b_acc, b_ce = self._sess.run([self._accuracy, self._cross_entropy],
                                          feed_dict={self._input_image : image_batch, self._y_is_iceberg : label_batch,
@@ -112,6 +122,17 @@ class Trainer:
             acc += b_n*b_acc
             ce += b_n*b_ce
             n += b_n
+
+            if batch_zero:
+                logits = self._sess.run([self._network_logit], feed_dict = {self._input_image : image_batch, self._y_is_iceberg : label_batch,
+                                                                            self._keep_prob : 1.0})
+                #print('logits: {}'.format(logits[0]))
+                for (i, p) in zip(range(1, 6), self._validation_paths):
+                    f = open(p, 'at')
+                    f.write('{}\n'.format(logits[0][i-1, 0])) 
+                    f.close()
+                batch_zero = False
+
         acc /= n
         ce /= n
 
@@ -139,9 +160,10 @@ if __name__ == '__main__':
 
     params = {
         'dataset_params' : {
-            'flips' : True,
-            'demean' : True,
-            'exponentiate_base' : 1.08,
+            'flips' : False,
+            'demean' : False,
+            'range_normalize' : True,
+            'exponentiate_base' : None,
             'add_noise' : False,
         },
         'net_params' : {

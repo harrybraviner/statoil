@@ -40,6 +40,7 @@ class StatoilTrainingDataset(StatoilDataset):
 
         self._flips = params['flips']
         self._zero_mean_images = params['demean']
+        self._range_normalize = params['range_normalize']
         self._exponentiate_base = params['exponentiate_base']
         self._add_noise = params['add_noise']
 
@@ -83,6 +84,8 @@ class StatoilTrainingDataset(StatoilDataset):
         if self._zero_mean_images:
             band1_flat = StatoilDataset._make_image_zero_mean(self._band1_images[index])
             band2_flat = StatoilDataset._make_image_zero_mean(self._band2_images[index])
+        if self._range_normalize:
+            band1_flat, band2_flat = self.range_normalize(band1_flat, band2_flat)
         if self._exponentiate_base is not None:
             band1_flat = np.power(self._exponentiate_base, (band1_flat - np.max(band1_flat)))
             # Note - The fact that we subtract the max of band1_flat below is not a mistake:
@@ -103,6 +106,13 @@ class StatoilTrainingDataset(StatoilDataset):
             if np.random.randint(low=0, high=2) == 1:
                 both_bands = StatoilDataset._reflect_image_vertically(both_bands)
         return both_bands, label
+
+    def range_normalize(self, band1, band2):
+        x_min = np.min([np.min(band1), np.min(band2)])
+        x_max = np.max([np.max(band1), np.max(band2)])
+        r = x_max - x_min
+        m = np.mean([np.mean(band1), np.mean(band2)])
+        return ((band1 - m)/r, (band2 - m)/r)
 
     def noise_augmentation(self, image):
         """Takes the dimmest 50% of pixels in the image and finds the stddev
@@ -143,6 +153,7 @@ class DatasetTests(unittest.TestCase):
 
     _example_params = {'flips' : False,
                        'demean' : True,
+                       'range_normalize' : False,
                        'exponentiate_base' : None,
                        'add_noise' : False,
                       }
