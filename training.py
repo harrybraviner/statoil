@@ -13,6 +13,7 @@ class Trainer:
 
         self._net = network
         self._dropout_keep_prob = params['net_params']['dropout_keep_prob']
+        self._l2_penalty = params['net_params']['l2_penalty']
 
         self._training_dataset = dataset.StatoilTrainingDataset(params['dataset_params'])
 
@@ -26,10 +27,10 @@ class Trainer:
             self._validation_stats_filename = os.path.join(path_for_logging, 'validation.dat')
             # Write headers
             f_train = open(self._train_stats_filename, 'wt')
-            f_train.write('#examples trained on\tcross entropy\n')
+            f_train.write('#examples trained on\tcross entropy\ttime\n')
             f_train.close()
             f_validation = open(self._validation_stats_filename, 'wt')
-            f_validation.write('#examples trained on\tcross entropy\taccuracy\n')
+            f_validation.write('#examples trained on\tvalidation cross entropy\tvalidation accuracy\tsmoothed training cross entropy\n')
             f_validation.close()
 
             # Temporary hack - remove later
@@ -55,9 +56,10 @@ class Trainer:
         self._y = tf.one_hot(self._y_is_iceberg, depth=2)
 
         self._cross_entropy = tf.losses.softmax_cross_entropy(onehot_labels = self._y, logits=self._y_hat)
+        self._l2_cost = self._l2_penalty * self._net.get_l2_weights()
         self._accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(self._y_hat, axis=1, output_type=tf.int32), self._y_is_iceberg), dtype=tf.float32))
 
-        self._train_step = tf.train.AdamOptimizer().minimize(self._cross_entropy)
+        self._train_step = tf.train.AdamOptimizer().minimize(self._cross_entropy + self._l2_cost)
 
         ## Setup stats to track the training
         self._smoothing_decay = 0.95
@@ -84,7 +86,8 @@ class Trainer:
 
         if self._train_stats_filename is not None:
             f_train = open(self._train_stats_filename, 'at')
-            f_train.write('{}\t{}\n'.format(self._num_examples_trained_on, self._smoothed_cross_entropy))
+            time = self._training_seconds + self._validation_seconds
+            f_train.write('{}\t{}\t{}\n'.format(self._num_examples_trained_on, self._smoothed_cross_entropy, time))
             f_train.close()
 
     def train_batch(self, batch_size):
@@ -141,7 +144,7 @@ class Trainer:
 
         if self._validation_stats_filename is not None:
             f_validation = open(self._validation_stats_filename, 'at')
-            f_validation.write('{}\t{}\t{}\n'.format(self._num_examples_trained_on, ce, acc))
+            f_validation.write('{}\t{}\t{}\t{}\n'.format(self._num_examples_trained_on, ce, acc, self._smoothed_cross_entropy))
             f_validation.close()
 
         end_time = time.time()
@@ -156,6 +159,7 @@ if __name__ == '__main__':
     parser.add_argument('net', type=str, choices = ['statNet1'])
     parser.add_argument('--epochs', type=int, default = 10)
     parser.add_argument('--logdir', type=str, default = './logs')
+    parser.add_argument('--l2penalty', type=float, default = '1e-3')
     args = parser.parse_args()
 
     params = {
@@ -173,7 +177,8 @@ if __name__ == '__main__':
             'conv2_channels' : 32,
             'fc1_size' : 1024,
             'fc2_size' : 128,
-            'dropout_keep_prob': 0.8
+            'dropout_keep_prob': 0.8,
+            'l2_penalty' : args.l2penalty
         }
     }
 

@@ -73,6 +73,18 @@ class StatNet1:
 
         return self._output_logit
 
+    def get_l2_weights(self):
+        if not self._built:
+            self.build()
+
+        total_l2_loss =   tf.nn.l2_loss(self._W_conv_1) + tf.nn.l2_loss(self._b_conv_1) \
+                        + tf.nn.l2_loss(self._W_conv_2) + tf.nn.l2_loss(self._b_conv_2) \
+                        + tf.nn.l2_loss(self._W_fc_1)   + tf.nn.l2_loss(self._b_fc_1) \
+                        + tf.nn.l2_loss(self._W_fc_2)   + tf.nn.l2_loss(self._b_fc_2) \
+                        + tf.nn.l2_loss(self._W_fc_3)   + tf.nn.l2_loss(self._b_fc_3)
+
+        return total_l2_loss
+
 class StatNet1Tests(unittest.TestCase):
 
     def test_init_and_building(self):

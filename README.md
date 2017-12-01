@@ -29,5 +29,4 @@ Dropout to be used for training in fully connected layers.
 * Do the flips improve things?
 * Does noise augmentation improve things?
 * Does dropout improve things?
-* Start a 'lab-book' document.
 * Where am I going to save results to?
