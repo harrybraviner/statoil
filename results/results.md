@@ -9,3 +9,43 @@ Results are in the directories `exp_on`, `exp_off` and `exp_off_demean`.
 Runs were performed with version `27c08c7308b9fa6e32dad7f64541b4ea3b5b97f7`.
 
 It doesn't look like it works very well - any what's going on with the demeaned case? Why does the validation cross-entropy suddenly jump?
+
+# L2 Regularization
+
+I added L2 regularization of all of the weights in the network.
+Changing the variable `l2_penalty` in `net_params` sets this.
+
+Runs were performed with the settings
+```python
+params = {
+    'dataset_params' : {
+        'flips' : False,
+        'demean' : False,
+        'range_normalize' : True,
+        'exponentiate_base' : None,
+        'add_noise' : False,
+    },
+    'net_params' : {
+        'conv1_size' : 5,
+        'conv1_channels' : 32,
+        'conv2_size' : 5,
+        'conv2_channels' : 32,
+        'fc1_size' : 1024,
+        'fc2_size' : 128,
+        'dropout_keep_prob': 0.8,
+        'l2_penalty' : args.l2penalty
+    }
+}
+```
+I haven't kept all of the runs because they took up too many directories.
+Runs were performed with version `de718370c30a5da0b46da340ce501c0b82bb8816`.
+I took a moving window of the validation cross-entropies, and found the window in which the maximum cross-entropy was minimised.
+This cross-entropy is what is plotted below.
+
+![Minima of validation cross entropies](./l2_reg_mins.png)
+
+Clearly `2e-2` works best *for this net*.
+
+![Example evolutions of validation cross entropy with training](./l2_reg_eg.png)
+
+We can see above that the regularization doesn't really make the minimum any deeper, but it does make it stable over a longer training horizon.
