@@ -4,6 +4,7 @@
  * Can I augment these (e.g. relections) usefully?
  * Can I do translations and rotations on training dataset? Could if I was prepared to 'zero' much of the background.
  * In almost all cases (99.7% of training data, all but 5 images), band 1 has a brighter maximum than band 2.
+ * The last 95 members of the dataset are all ships! This is probably why I saw problems when this was used in the training set!
  
 # Design notes
 

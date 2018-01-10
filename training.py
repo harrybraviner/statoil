@@ -9,13 +9,16 @@ import statNet1
 
 class Trainer:
 
-    def __init__(self, network, params, path_for_logging):
+    def __init__(self, network, params, path_for_logging, no_validation_set):
 
         self._net = network
         self._dropout_keep_prob = params['net_params']['dropout_keep_prob']
         self._l2_penalty = params['net_params']['l2_penalty']
 
-        self._training_dataset = dataset.StatoilTrainingDataset(params['dataset_params'])
+        self._params = params
+
+        validation_fraction = 0.0 if no_validation_set else 0.02
+        self._training_dataset = dataset.StatoilTrainingDataset(params['dataset_params'], validation_fraction = validation_fraction)
 
         if path_for_logging is not None:
             if not os.path.exists(path_for_logging):
@@ -32,6 +35,8 @@ class Trainer:
             f_validation = open(self._validation_stats_filename, 'wt')
             f_validation.write('#examples trained on\tvalidation cross entropy\tvalidation accuracy\tsmoothed training cross entropy\n')
             f_validation.close()
+
+            self._test_output_filename = os.path.join(path_for_logging, 'submission.csv')
 
             # Temporary hack - remove later
             self._validation_paths = [os.path.join(path_for_logging, 'val{}.dat'.format(i)) for i in range(1,6)]
@@ -154,12 +159,46 @@ class Trainer:
         print('Time spent training: {} seconds'.format(self._training_seconds))
         print('Time spent validating: {} seconds'.format(self._validation_seconds))
 
+    def make_predictions(self, batch_size=32):
+        """Make predictions using the test data predictors.
+        Write the results to a file in the log directory.
+        Currently this function will just overwrite any previous
+        predictions made by the same Trainer.
+        """
+
+        print('Making predictions for the test set...')
+
+        # May have to modify this if the test dataset is too large for memory
+        test_dataset = dataset.StatoilTrainingDataset(self._params['dataset_params'], filename='./data/test.json',
+                                                     validation_fraction = 0.0)
+        batches = test_dataset.get_all_images_without_augmentation(batch_size)
+
+        f = open(self._test_output_filename, 'wt')
+        f.write('id,is_iceberg\n')
+
+        for (image_ids, images) in batches:
+            [batch_ice_logits, batch_ship_logits] = \
+                    self._sess.run([self._network_logit, self._ship_logit],
+                                   feed_dict = {self._input_image : images, self._keep_prob : 1.0})
+            logits_combined = np.concatenate([batch_ice_logits, batch_ship_logits], axis=1)
+            c_0 = np.max(logits_combined, axis=1)
+            logits_safe = logits_combined - np.stack([c_0, c_0], axis=1)
+            denom = np.sum(np.exp(logits_safe), 1)
+            batch_p_iceberg = np.exp(logits_safe[:, 0]) / denom
+
+            for (i, p) in zip(image_ids, batch_p_iceberg):
+                f.write('{},{}\n'.format(i, p))
+            
+        f.close()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('net', type=str, choices = ['statNet1'])
     parser.add_argument('--epochs', type=int, default = 10)
     parser.add_argument('--logdir', type=str, default = './logs')
-    parser.add_argument('--l2penalty', type=float, default = '1e-3')
+    parser.add_argument('--l2penalty', type=float, default = '2e-2')
+    parser.add_argument('--with-predictions', action='store_true')
+    parser.add_argument('--no-validation-set', action='store_true')
     args = parser.parse_args()
 
     params = {
@@ -188,7 +227,7 @@ if __name__ == '__main__':
         raise ValueError('Net type {} is unknown.'.format(args.net))
 
     batch_size = 32
-    trainer = Trainer(net, params, args.logdir)
+    trainer = Trainer(net, params, args.logdir, no_validation_set = args.no_validation_set)
     batches_per_epoch = trainer._training_dataset._N_train / batch_size
 
     print('Will train for {} batches.'.format(ceil(args.epochs * batches_per_epoch)))
@@ -198,7 +237,10 @@ if __name__ == '__main__':
         if i%10 == 0:
             trainer.print_training_stats()
 
-        if i%25 == 0:
+        if i%25 == 0 and not args.no_validation_set:
             trainer.get_and_print_validation_stats(batch_size)
+
+    if args.with_predictions:
+        trainer.make_predictions(batch_size)
 
     trainer.print_times()

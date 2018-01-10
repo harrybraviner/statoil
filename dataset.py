@@ -20,6 +20,7 @@ class StatoilDataset:
         if 'is_iceberg' in data_json[0].keys():
             self._labels = np.array([x['is_iceberg'] for x in data_json])
 
+        self._image_ids = np.array([x['id'] for x in data_json])
         self._band1_images = np.array([x['band_1'] for x in data_json])
         self._band2_images = np.array([x['band_2'] for x in data_json])
 
@@ -47,6 +48,9 @@ class StatoilTrainingDataset(StatoilDataset):
         self._N_total = len(self._band1_images)
         self._N_val = int(validation_fraction * self._N_total)
         self._N_train = self._N_total - self._N_val
+
+        print('_N_train: {}'.format(self._N_train))
+        print('_N_val: {}'.format(self._N_val))
 
         self.set_training_stats()
 
@@ -78,7 +82,7 @@ class StatoilTrainingDataset(StatoilDataset):
         self._band2_max = b2_max
         self._band2_min = b2_min
 
-    def get_image_and_label_from_index(self, validation, index):
+    def get_image_from_index(self, validation, index):
         band1_flat = self._band1_images[index]
         band2_flat = self._band2_images[index]
         if self._zero_mean_images:
@@ -99,12 +103,16 @@ class StatoilTrainingDataset(StatoilDataset):
             np.stack([np.reshape(band1_flat, newshape = [num_rows, num_cols]),
                       np.reshape(band2_flat, newshape = [num_rows, num_cols])],
                      axis = 2)
-        label = self._labels[index]
         if self._flips and not validation:
             if np.random.randint(low=0, high=2) == 1:
                 both_bands = StatoilDataset._reflect_image_horizontally(both_bands)
             if np.random.randint(low=0, high=2) == 1:
                 both_bands = StatoilDataset._reflect_image_vertically(both_bands)
+        return both_bands
+
+    def get_image_and_label_from_index(self, validation, index):
+        both_bands = self.get_image_from_index(validation, index)
+        label = self._labels[index]
         return both_bands, label
 
     def range_normalize(self, band1, band2):
@@ -147,6 +155,23 @@ class StatoilTrainingDataset(StatoilDataset):
                                  for i in range(validation_cursor, validation_cursor + num_to_take)]
             batches += [(np.array([im for (im, _) in images_and_labels]), np.array([l for (_, l) in images_and_labels]))]
             validation_cursor += num_to_take
+        return batches
+
+    def get_all_images_without_augmentation(self, batch_size):
+        """This function is really here for when we create
+        an instance for the test set. I really should have split this
+        into two classes right at the start.
+        """
+        cursor = 0
+        batches = []
+        while cursor < self._N_total:
+            num_left = self._N_total - cursor
+            num_to_take = batch_size if num_left >= batch_size else num_left
+            images = [self.get_image_from_index(validation = True, index=i)
+                                    for i in range(cursor, cursor + num_to_take)]
+            image_ids = self._image_ids[cursor:cursor + num_to_take]
+            batches += [(image_ids, np.array([im for im in images]))]
+            cursor += num_to_take
         return batches
 
 class DatasetTests(unittest.TestCase):
