@@ -5,6 +5,7 @@ import numpy as np
 import argparse, os, time, json
 from math import ceil
 import dataset
+import dataset_new
 import statNet1
 
 class Trainer:
@@ -18,7 +19,9 @@ class Trainer:
         self._params = params
 
         validation_fraction = 0.0 if no_validation_set else 0.02
-        self._training_dataset = dataset.StatoilTrainingDataset(params['dataset_params'], validation_fraction = validation_fraction)
+        #self._training_dataset = dataset.StatoilTrainingDataset(params['dataset_params'], validation_fraction = validation_fraction)
+        self._training_dataset = dataset_new.StatoilTrainingDataset(validation_fraction = validation_fraction,
+                                                                    params = params['dataset_params'])
 
         if path_for_logging is not None:
             if not os.path.exists(path_for_logging):
@@ -199,6 +202,9 @@ if __name__ == '__main__':
     parser.add_argument('--l2penalty', type=float, default = '2e-2')
     parser.add_argument('--with-predictions', action='store_true')
     parser.add_argument('--no-validation-set', action='store_true')
+    parser.add_argument('--shuffle-dataset', dest='shuffle_dataset', action='store_true')
+    parser.add_argument('--do-not-shuffle-dataset', dest='shuffle_dataset', action='store_false')
+    parser.set_defaults(shuffle_dataset = True)
     args = parser.parse_args()
 
     params = {
@@ -208,6 +214,7 @@ if __name__ == '__main__':
             'range_normalize' : True,
             'exponentiate_base' : None,
             'add_noise' : False,
+            'shuffle' : args.shuffle_dataset
         },
         'net_params' : {
             'conv1_size' : 5,

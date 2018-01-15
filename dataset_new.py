@@ -51,19 +51,32 @@ class StatoilDataset:
 class StatoilTrainingDataset:
 
     def __init__(self, filename='./data/train.json', validation_fraction=0.3, params = None):
+        if params is None:
+            params = {
+                'shuffle' : True
+            }
+
+        self._shuffle_examples = params['shuffle']
+
         self._dataset = StatoilDataset(filename, purpose = "training", augmentation_params = params)
 
         self._N_total = self._dataset.num_images
         self._N_validation = int(self._N_total*validation_fraction)
         self._N_train = self._N_total - self._N_validation
 
-        self._train_indices = set(np.random.choice(self._N_total, size = self._N_train, replace = False))
+        if self._shuffle_examples:
+            self._train_indices = set(np.random.choice(self._N_total, size = self._N_train, replace = False))
+        else:
+            self._train_indices = set(np.arange(self._N_train))
         self._reset_training_queue()
         self._validation_indices = list(set(np.arange(self._N_total)) - self._train_indices)
 
     def _reset_training_queue(self):
         self._train_indices_queue = list(self._train_indices)
-        shuffle(self._train_indices_queue)
+        if self._shuffle_examples:
+            shuffle(self._train_indices_queue)
+        else:
+            self._train_indices_queue.sort()
 
     def get_next_training_indices(self, num_to_get):
         if num_to_get <= len(self._train_indices_queue):

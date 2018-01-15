@@ -49,3 +49,43 @@ Clearly `2e-2` works best *for this net*.
 ![Example evolutions of validation cross entropy with training](./l2_reg_eg.png)
 
 We can see above that the regularization doesn't really make the minimum any deeper, but it does make it stable over a longer training horizon.
+
+# Shuffling training data
+
+I noticed that when I turned down the size of the validation set, the training error stopped decreasing!
+This is weird, since it was only adding 50% more data.
+It turns out that the last 95 rows of the training set are all ships.
+So two batches were training with entirely ships.
+
+I wrote a new data input class that allows shuffling of the data.
+
+![Training cross entropy evolution with different data shuffling](./shuffling.png)
+The figure shows that just shuffling that data once doesn't do much.
+We really should do independent selection for each training epoch.
+
+Note that this isn't a perfect comparisson to the situation I was seeing before - I didn't implement normalisations in this dataset yet, so the 'unshuffled' case doesn't exactly match the previous situation.
+
+Runs were performed with the settings
+```python
+params = {
+    'dataset_params' : {
+        'flips' : False,
+        'demean' : False,
+        'range_normalize' : True,
+        'exponentiate_base' : None,
+        'add_noise' : False,
+        'shuffle' : args.shuffle_dataset
+    },
+    'net_params' : {
+        'conv1_size' : 5,
+        'conv1_channels' : 32,
+        'conv2_size' : 5,
+        'conv2_channels' : 32,
+        'fc1_size' : 1024,
+        'fc2_size' : 128,
+        'dropout_keep_prob': 0.8,
+        'l2_penalty' : args.l2penalty
+    }
+}
+```
+The version was
