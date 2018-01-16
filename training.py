@@ -6,7 +6,7 @@ import argparse, os, time, json
 from math import ceil
 import dataset
 import dataset_new
-import statNet1
+import statNet1, statNet2
 
 class Trainer:
 
@@ -18,7 +18,7 @@ class Trainer:
 
         self._params = params
 
-        validation_fraction = 0.0 if no_validation_set else 0.02
+        validation_fraction = 0.0 if no_validation_set else 0.25
         #self._training_dataset = dataset.StatoilTrainingDataset(params['dataset_params'], validation_fraction = validation_fraction)
         self._training_dataset = dataset_new.StatoilTrainingDataset(validation_fraction = validation_fraction,
                                                                     params = params['dataset_params'])
@@ -196,7 +196,7 @@ class Trainer:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('net', type=str, choices = ['statNet1'])
+    parser.add_argument('net', type=str, choices = ['statNet1', 'statNet2'])
     parser.add_argument('--epochs', type=int, default = 10)
     parser.add_argument('--logdir', type=str, default = './logs')
     parser.add_argument('--l2penalty', type=float, default = '2e-2')
@@ -230,6 +230,8 @@ if __name__ == '__main__':
 
     if args.net == 'statNet1':
         net = statNet1.StatNet1(params['net_params'])
+    elif args.net == 'statNet2':
+        net = statNet2.StatNet2(params['net_params'])
     else:
         raise ValueError('Net type {} is unknown.'.format(args.net))
 

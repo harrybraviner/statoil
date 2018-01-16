@@ -22,7 +22,7 @@ Dropout to be used for training in fully connected layers.
 ## Programming
 
 * Add noise augmentation of data.
-* Check that your conv layers are able to 'mix' the two bands!
+* Add batch normalisation into statNet1 - set mean and var from training data before test.
 
 ## Experimentation
 

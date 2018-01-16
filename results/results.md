@@ -60,6 +60,7 @@ So two batches were training with entirely ships.
 I wrote a new data input class that allows shuffling of the data.
 
 ![Training cross entropy evolution with different data shuffling](./shuffling.png)
+
 The figure shows that just shuffling that data once doesn't do much.
 We really should do independent selection for each training epoch.
 
