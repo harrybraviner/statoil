@@ -217,6 +217,7 @@ if __name__ == '__main__':
             'shuffle' : args.shuffle_dataset
         },
         'net_params' : {
+            'net' : args.net,
             'conv1_size' : 5,
             'conv1_channels' : 32,
             'conv2_size' : 5,

@@ -36,70 +36,80 @@ class StatNet2:
             fc_layer_2_size = self._params['fc2_size']
 
             self._W_conv_1 = _make_weight([conv_layer_1_size, conv_layer_1_size, input_shape[2], conv_layer_1_channels])
-            self._b_conv_1 = _make_bias([conv_layer_1_channels])
-
             self._gamma_conv_1 = tf.Variable(tf.ones([conv_layer_1_channels]))
             self._beta_conv_1 = tf.Variable(tf.zeros([conv_layer_1_channels]))
 
             self._W_conv_2 = _make_weight([conv_layer_2_size, conv_layer_2_size, conv_layer_1_channels, conv_layer_2_channels])
-            self._b_conv_2 = _make_bias([conv_layer_2_channels])
-
             self._gamma_conv_2 = tf.Variable(tf.ones([conv_layer_2_channels]))
             self._beta_conv_2 = tf.Variable(tf.zeros([conv_layer_2_channels]))
 
             self._pooled_flat_size = ceil(ceil(input_shape[0]/2)/2) * ceil(ceil(input_shape[1]/2)/2) * conv_layer_2_channels
             self._W_fc_1 = _make_weight([self._pooled_flat_size, fc_layer_1_size])
-            self._b_fc_1 = _make_bias([fc_layer_1_size])
-
             self._gamma_fc_1 = tf.Variable(tf.ones([fc_layer_1_size]))
             self._beta_fc_1 = tf.Variable(tf.zeros([fc_layer_1_size]))
 
             self._W_fc_2 = _make_weight([fc_layer_1_size, fc_layer_2_size])
-            self._b_fc_2 = _make_bias([fc_layer_2_size])
-
             self._gamma_fc_2 = tf.Variable(tf.ones([fc_layer_2_size]))
             self._beta_fc_2 = tf.Variable(tf.zeros([fc_layer_2_size]))
 
             self._W_fc_3 = _make_weight([fc_layer_2_size, 1])
             self._b_fc_3 = _make_bias([1])
 
+            # Inference moments - these should be populated by a run through the training dataset
+            self._mean_conv_1_inf = tf.Variable(tf.ones([conv_layer_1_channels]))
+            self._var_conv_1_inf = tf.Variable(tf.ones([conv_layer_1_channels]))
+            self._mean_conv_2_inf = tf.Variable(tf.ones([conv_layer_2_channels]))
+            self._var_conv_2_inf = tf.Variable(tf.ones([conv_layer_2_channels]))
+            self._mean_fc_1_inf = tf.Variable(tf.ones([fc_layer_1_size]))
+            self._var_fc_1_inf = tf.Variable(tf.ones([fc_layer_1_size]))
+            self._mean_fc_2_inf = tf.Variable(tf.ones([fc_layer_2_size]))
+            self._var_fc_2_inf = tf.Variable(tf.ones([fc_layer_2_size]))
+
             self._built = True
 
-    def connect(self, x, keep_prob):
+    def connect(self, x, keep_prob, inference=False, moments = None):
 
         if not self._built:
             self.build()
 
-        self._h_conv_1 = tf.nn.conv2d(x, self._W_conv_1, strides=[1,1,1,1], padding = 'SAME') + self._b_conv_1
-        self._mean_conv_1, self._var_conv_1 = tf.nn.moments(self._h_conv_1, axes=[0])
-        self._bn_conv_1 = tf.nn.batch_normalization(self._h_conv_1, self._mean_conv_1, self._var_conv_1,
-                                                    self._beta_conv_1, self._gamma_conv_1, self._epsilon)
-        self._act_conv_1 = tf.nn.relu(self._bn_conv_1)
-        self._h_pool_1 = tf.nn.max_pool(self._act_conv_1, ksize = [1,2,2,1], strides=[1,2,2,1], padding = 'SAME')
-                
-        self._h_conv_2 = tf.nn.conv2d(self._h_pool_1, self._W_conv_2, strides=[1,1,1,1], padding = 'SAME') + self._b_conv_2
-        self._mean_conv_2, self._var_conv_2 = tf.nn.moments(self._h_conv_2, axes=[0])
-        self._bn_conv_2 = tf.nn.batch_normalization(self._h_conv_2, self._mean_conv_2, self._var_conv_2,
-                                                    self._beta_conv_2, self._gamma_conv_2, self._epsilon)
-        self._act_conv_2 = tf.nn.relu(self._bn_conv_2)
-        self._h_pool_2 = tf.nn.max_pool(self._act_conv_2, ksize = [1,2,2,1], strides=[1,2,2,1], padding = 'SAME')
-        self._h_pool_2_flat = tf.reshape(self._h_pool_2, shape = [-1, self._pooled_flat_size])
+        inf_str = "_inf" if inference else ""
 
-        self._h_fc_1 = tf.matmul(self._h_pool_2_flat, self._W_fc_1) + self._b_fc_1
-        self._mean_fc_1, self._var_fc_1 = tf.nn.moments(self._h_fc_1, axes=[0])
-        self._bn_fc_1 = tf.nn.batch_normalization(self._h_fc_1, self._mean_fc_1, self._var_fc_1,
-                                                  self._beta_fc_1, self._gamma_fc_1, self._epsilon)
-        self._act_fc_1 = tf.nn.relu(self._bn_fc_1)
-        self._h_fc_1_dropped = tf.nn.dropout(self._act_fc_1, keep_prob)
+        def connect_bn_conv_layer(u, W, mean, var, beta, gamma, name):
+            x = tf.nn.conv2d(u, W, strides=[1,1,1,1], padding = 'SAME', name = name + "_conv" + inf_str)
+            if not inference:
+                mean, var = tf.nn.moments(x, axes=[0], name = name + "_mom")
+            x_hat = tf.nn.batch_normalization(x, mean, var, beta, gamma, self._epsilon, name = name + "_bn" + inf_str)
+            act = tf.nn.relu(x_hat, name = name + "_act" + inf_str)
+            pool = tf.nn.max_pool(act, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name = name + "_act" + inf_str)
+            return pool
 
-        self._h_fc_2 = tf.matmul(self._h_fc_1_dropped, self._W_fc_2) + self._b_fc_2
-        self._mean_fc_2, self._var_fc_2 = tf.nn.moments(self._h_fc_2, axes=[0])
-        self._bn_fc_2 = tf.nn.batch_normalization(self._h_fc_2, self._mean_fc_2, self._var_fc_2,
-                                                  self._beta_fc_2, self._gamma_fc_2, self._epsilon)
-        self._act_fc_2 = tf.nn.relu(self._bn_fc_2)
-        self._h_fc_2_dropped = tf.nn.dropout(self._act_fc_2, keep_prob)
+        def connect_fc_layer(u, W, mean, var, beta, gamma, name):
+            x = tf.matmul(u, W, name = name + "_matmul")
+            if not inference:
+                mean, var = tf.nn.moments(x, axes=[0], name = name + "_mom" + inf_str)
+            x_hat = tf.nn.batch_normalization(x, mean, var, beta, gamma, self._epsilon, name = name + "_bn" + inf_str)
+            act = tf.nn.relu(x_hat, name = name + "_act" + inf_str)
+            dropped = tf.nn.dropout(act, keep_prob, name = name + "_drop" + inf_str)
+            return dropped
 
-        self._output_logit = tf.matmul(self._h_fc_2_dropped, self._W_fc_3) + self._b_fc_3
+        #mean_conv_1, var_conv_1 = (self._mean_conv_1, self._var_conv_1) if not inference else (None, None)
+        mean_conv_1, var_conv_1 = (None, None) if not inference else (None, None)
+        z_conv_1 = connect_bn_conv_layer(x, self._W_conv_1, mean_conv_1, var_conv_1,
+                                         self._beta_conv_1, self._gamma_conv_1, "conv_1")
+
+        #mean_conv_2, var_conv_2 = (self._mean_conv_2, self._var_conv_2) if not inference else (None, None)
+        mean_conv_2, var_conv_2 = (None, None) if not inference else (None, None)
+        z_conv_2 = connect_bn_conv_layer(z_conv_1, self._W_conv_2, mean_conv_2, var_conv_2,
+                                         self._beta_conv_2, self._gamma_conv_2, "conv_2")
+        z_conv_2_flat = tf.reshape(z_conv_2, shape = [-1, self._pooled_flat_size], name = "conv_2_flat" + inf_str)
+
+        mean_fc_1, var_fc_1 = (None, None) if not inference else (None, None)
+        z_fc_1 = connect_fc_layer(z_conv_2_flat, self._W_fc_1, mean_fc_1, var_fc_1, self._beta_fc_1, self._gamma_fc_1, "fc_1")
+
+        mean_fc_2, var_fc_2 = (None, None) if not inference else (None, None)
+        z_fc_2 = connect_fc_layer(z_fc_1, self._W_fc_2, mean_fc_2, var_fc_2, self._beta_fc_2, self._gamma_fc_2, "fc_2")
+
+        self._output_logit = tf.matmul(z_fc_2, self._W_fc_3) + self._b_fc_3
 
         return self._output_logit
 
@@ -107,10 +117,10 @@ class StatNet2:
         if not self._built:
             self.build()
 
-        total_l2_loss =   tf.nn.l2_loss(self._W_conv_1) + tf.nn.l2_loss(self._b_conv_1) \
-                        + tf.nn.l2_loss(self._W_conv_2) + tf.nn.l2_loss(self._b_conv_2) \
-                        + tf.nn.l2_loss(self._W_fc_1)   + tf.nn.l2_loss(self._b_fc_1) \
-                        + tf.nn.l2_loss(self._W_fc_2)   + tf.nn.l2_loss(self._b_fc_2) \
+        total_l2_loss =   tf.nn.l2_loss(self._W_conv_1) \
+                        + tf.nn.l2_loss(self._W_conv_2) \
+                        + tf.nn.l2_loss(self._W_fc_1) \
+                        + tf.nn.l2_loss(self._W_fc_2) \
                         + tf.nn.l2_loss(self._W_fc_3)   + tf.nn.l2_loss(self._b_fc_3)
 
         return total_l2_loss
