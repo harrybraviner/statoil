@@ -67,51 +67,57 @@ class StatNet2:
 
             self._built = True
 
-    def connect(self, x, keep_prob, inference=False, moments = None):
+    def connect(self, x, keep_prob, inference, moments):
 
         if not self._built:
             self.build()
 
-        inf_str = "_inf" if inference else ""
+        def connect_bn_conv_layer(u, W, mean_in, var_in, beta, gamma, name):
+            x = tf.nn.conv2d(u, W, strides=[1,1,1,1], padding = 'SAME', name = name + "_conv")
+            mean_batch, var_batch = tf.nn.moments(x, axes=[0], name = name + "_mom")
+            moment_output = [mean_batch, var_batch]
+            mean_to_use = tf.cond(inference, true_fn = lambda: mean_in, false_fn = lambda: mean_batch)
+            var_to_use  = tf.cond(inference, true_fn = lambda: var_in,  false_fn = lambda: var_batch )
+            x_hat = tf.nn.batch_normalization(x, mean_to_use, var_to_use, beta, gamma,
+                                              self._epsilon, name = name + "_bn")
+            act = tf.nn.relu(x_hat, name = name + "_act")
+            pool = tf.nn.max_pool(act, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name = name + "_act")
+            return pool, moment_output
 
-        def connect_bn_conv_layer(u, W, mean, var, beta, gamma, name):
-            x = tf.nn.conv2d(u, W, strides=[1,1,1,1], padding = 'SAME', name = name + "_conv" + inf_str)
-            if not inference:
-                mean, var = tf.nn.moments(x, axes=[0], name = name + "_mom")
-            x_hat = tf.nn.batch_normalization(x, mean, var, beta, gamma, self._epsilon, name = name + "_bn" + inf_str)
-            act = tf.nn.relu(x_hat, name = name + "_act" + inf_str)
-            pool = tf.nn.max_pool(act, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name = name + "_act" + inf_str)
-            return pool
-
-        def connect_fc_layer(u, W, mean, var, beta, gamma, name):
+        def connect_fc_layer(u, W, mean_in, var_in, beta, gamma, name):
             x = tf.matmul(u, W, name = name + "_matmul")
-            if not inference:
-                mean, var = tf.nn.moments(x, axes=[0], name = name + "_mom" + inf_str)
-            x_hat = tf.nn.batch_normalization(x, mean, var, beta, gamma, self._epsilon, name = name + "_bn" + inf_str)
-            act = tf.nn.relu(x_hat, name = name + "_act" + inf_str)
-            dropped = tf.nn.dropout(act, keep_prob, name = name + "_drop" + inf_str)
-            return dropped
+            mean_batch, var_batch = tf.nn.moments(x, axes=[0], name = name + "_mom")
+            moment_output = [mean_batch, var_batch]
+            mean_to_use = tf.cond(inference, true_fn = lambda: mean_in, false_fn = lambda: mean_batch)
+            var_to_use  = tf.cond(inference, true_fn = lambda: var_in,  false_fn = lambda: var_batch )
+            x_hat = tf.nn.batch_normalization(x, mean_to_use, var_to_use, beta, gamma,
+                                              self._epsilon, name = name + "_bn")
+            act = tf.nn.relu(x_hat, name = name + "_act")
+            dropped = tf.nn.dropout(act, keep_prob, name = name + "_drop")
+            return dropped, moment_output
 
-        #mean_conv_1, var_conv_1 = (self._mean_conv_1, self._var_conv_1) if not inference else (None, None)
-        mean_conv_1, var_conv_1 = (None, None) if not inference else (None, None)
-        z_conv_1 = connect_bn_conv_layer(x, self._W_conv_1, mean_conv_1, var_conv_1,
-                                         self._beta_conv_1, self._gamma_conv_1, "conv_1")
+        mean_conv_1, var_conv_1 = moments[0]
+        z_conv_1, moments_out_conv1 = connect_bn_conv_layer(x, self._W_conv_1, mean_conv_1, var_conv_1,
+                                                            self._beta_conv_1, self._gamma_conv_1, "conv_1")
 
-        #mean_conv_2, var_conv_2 = (self._mean_conv_2, self._var_conv_2) if not inference else (None, None)
-        mean_conv_2, var_conv_2 = (None, None) if not inference else (None, None)
-        z_conv_2 = connect_bn_conv_layer(z_conv_1, self._W_conv_2, mean_conv_2, var_conv_2,
-                                         self._beta_conv_2, self._gamma_conv_2, "conv_2")
-        z_conv_2_flat = tf.reshape(z_conv_2, shape = [-1, self._pooled_flat_size], name = "conv_2_flat" + inf_str)
+        mean_conv_2, var_conv_2 = moments[1]
+        z_conv_2, moments_out_conv2 = connect_bn_conv_layer(z_conv_1, self._W_conv_2, mean_conv_2, var_conv_2,
+                                                            self._beta_conv_2, self._gamma_conv_2, "conv_2")
+        z_conv_2_flat = tf.reshape(z_conv_2, shape = [-1, self._pooled_flat_size], name = "conv_2_flat")
 
-        mean_fc_1, var_fc_1 = (None, None) if not inference else (None, None)
-        z_fc_1 = connect_fc_layer(z_conv_2_flat, self._W_fc_1, mean_fc_1, var_fc_1, self._beta_fc_1, self._gamma_fc_1, "fc_1")
+        mean_fc_1, var_fc_1 = moments[2]
+        z_fc_1, moments_out_fc1 = connect_fc_layer(z_conv_2_flat, self._W_fc_1, mean_fc_1, var_fc_1,
+                                                   self._beta_fc_1, self._gamma_fc_1, "fc_1")
 
-        mean_fc_2, var_fc_2 = (None, None) if not inference else (None, None)
-        z_fc_2 = connect_fc_layer(z_fc_1, self._W_fc_2, mean_fc_2, var_fc_2, self._beta_fc_2, self._gamma_fc_2, "fc_2")
+        mean_fc_2, var_fc_2 = moments[3]
+        z_fc_2, moments_out_fc2 = connect_fc_layer(z_fc_1, self._W_fc_2, mean_fc_2, var_fc_2,
+                                                   self._beta_fc_2, self._gamma_fc_2, "fc_2")
 
         self._output_logit = tf.matmul(z_fc_2, self._W_fc_3) + self._b_fc_3
 
-        return self._output_logit
+        moments_out = [moments_out_conv1, moments_out_conv2, moments_out_fc1, moments_out_fc2]
+
+        return self._output_logit, moments_out
 
     def get_l2_weights(self):
         if not self._built:
@@ -149,8 +155,24 @@ class StatNet2Tests(unittest.TestCase):
             s_net = StatNet2(self.default_params)
 
             x = tf.placeholder(shape=[13, 75, 75, 2], dtype=tf.float32)
-            y = s_net.connect(x, keep_prob=0.5)
+            keep_prob = tf.placeholder(shape = (), dtype = tf.float32)
+            inference = tf.placeholder(shape = (), dtype = tf.bool)
+            moments = [[tf.placeholder(shape = [75, 75, self.default_params['conv1_channels']], dtype = tf.float32),
+                        tf.placeholder(shape = [75, 75, self.default_params['conv1_channels']], dtype = tf.float32)],
+                       [tf.placeholder(shape = [38, 38, self.default_params['conv2_channels']], dtype = tf.float32),
+                        tf.placeholder(shape = [38, 38, self.default_params['conv2_channels']], dtype = tf.float32)],
+                       [tf.placeholder(shape = [self.default_params['fc1_size']], dtype = tf.float32),
+                        tf.placeholder(shape = [self.default_params['fc1_size']], dtype = tf.float32)],
+                       [tf.placeholder(shape = [self.default_params['fc2_size']], dtype = tf.float32),
+                        tf.placeholder(shape = [self.default_params['fc2_size']], dtype = tf.float32)]]
+            y, moments_out = s_net.connect(x, keep_prob=keep_prob, inference=inference, moments = moments)
 
             self.assertEqual([yy.value for yy in y.shape], [13, 1])
+            self.assertEqual(len(moments), len(moments_out))
+            for (moment, moment_out) in zip(moments, moments_out):
+                self.assertEqual(len(moment_out), 2)
+                self.assertEqual(moment[0].shape, moment_out[0].shape)
+                self.assertEqual(moment[0].shape, moment_out[0].shape)
+                self.assertEqual(moment[1].shape, moment_out[1].shape)
 
 
