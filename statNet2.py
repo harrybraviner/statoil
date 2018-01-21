@@ -67,6 +67,12 @@ class StatNet2:
 
             self._built = True
 
+    @property
+    def moment_shapes(self):
+        return [[[self._input_shape[0], self._input_shape[1], self._params['conv1_channels']]]*2,
+                [[(self._input_shape[0] + 1)//2, (self._input_shape[1] + 1)//2, self._params['conv2_channels']]]*2,
+                [[self._params['fc1_size']]]*2, [[self._params['fc2_size']]]*2]
+
     def connect(self, x, keep_prob, inference, moments):
 
         if not self._built:

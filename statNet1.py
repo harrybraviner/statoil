@@ -52,7 +52,20 @@ class StatNet1:
 
             self._built = True
 
-    def connect(self, x, keep_prob):
+    @property
+    def moment_shapes(self):
+        return []
+
+    def connect(self, x, keep_prob, inference, moments):
+
+        """
+        
+        Args:
+            x : Input image
+            keep_prob : Dropout layer probability of keeping element
+            inference : Not used, present for compatability with statNet2
+            moments : Not used, present for compatability with statNet2
+        """
 
         if not self._built:
             self.build()

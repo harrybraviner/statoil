@@ -7,6 +7,7 @@ from math import ceil
 import dataset
 import dataset_new
 import statNet1, statNet2
+from collections import deque
 
 class Trainer:
 
@@ -54,7 +55,9 @@ class Trainer:
         ## Setup placeholers and costs
         self._input_image = tf.placeholder(shape = [None, 75, 75, 2], dtype=tf.float32)
         self._keep_prob = tf.placeholder(shape = (), dtype=tf.float32)
-        self._network_logit = self._net.connect(self._input_image, self._keep_prob)
+        self._inference = tf.placeholder(shape = (), dtype=tf.bool)
+        self._moments = [[tf.placeholder(shape = shape, dtype = tf.float32, name = 'moment_ph_{}_{}'.format(i, j)) for (i, shape) in enumerate(layer)] for (j, layer) in enumerate(self._net.moment_shapes)]
+        self._network_logit, self._moments_out = self._net.connect(self._input_image, self._keep_prob, self._inference, self._moments)
         self._ship_logit = 1.0 - self._network_logit
 
         # Ordering must be this way around because label = 0 for ship, 1 for iceberg
@@ -75,6 +78,15 @@ class Trainer:
         self._num_examples_trained_on = 0
         self._training_seconds = 0.0
         self._validation_seconds = 0.0
+
+        ## Setup the deque we will use to keep aggregated means and variances
+        self._num_batches_to_track = 1604 // 32
+        # This will hold a record of the means and variances for the last N batches
+        self._moment_values_history = [[np.zeros(shape = [self._num_batches_to_track] + shape) for shape in layer] for layer in self._net.moment_shapes]
+        # Which batch in the cirular list to update next
+        self._moment_history_cursor = 0
+        # This is where we'll write the mean-of-means and mean-of-variances
+        self._moment_values = [[np.zeros(shape = shape) for shape in layer] for layer in self._net.moment_shapes]
 
         ## Initialize the session
         self._sess = tf.Session()
@@ -97,15 +109,42 @@ class Trainer:
             time = self._training_seconds + self._validation_seconds
             f_train.write('{}\t{}\t{}\n'.format(self._num_examples_trained_on, self._smoothed_cross_entropy, time))
             f_train.close()
+    
+    def add_to_moment_history(self, moments):
+        """ Update the appropriate member of the history array,
+        and advance the cursor.
+        This should be done after every training round.
+        """
+        for (history, new) in zip(self._moment_values_history, moments):
+            for (x, y) in zip(history, new):
+                x[self._moment_history_cursor, :] = y
+        self._moment_history_cursor = (self._moment_history_cursor + 1) % self._num_batches_to_track
+
+    def update_moment_values(self):
+        """ Average the means and variances in our array of moment
+        histories. This should be done before inference.
+        """
+        for (av, history) in zip(self._moment_values, self._moment_values_history):
+            for (x, y) in zip(av, history):
+                x[:] = np.mean(y, axis = 0)
+
+    def get_moments_dict(self):
+        return { x : y for layer in zip(self._moments, self._moment_values)
+                            for (x, y) in zip(layer[0], layer[1])}
 
     def train_batch(self, batch_size):
 
         start_time = time.time()
 
         image_batch, label_batch = self._training_dataset.get_next_training_batch(batch_size)
-        _, ce = self._sess.run([self._train_step, self._cross_entropy],
-                                feed_dict = {self._input_image : image_batch, self._y_is_iceberg : label_batch,
-                                             self._keep_prob : self._dropout_keep_prob})
+        feed_dict = {self._input_image : image_batch,
+                     self._y_is_iceberg : label_batch,
+                     self._inference : False,
+                     self._keep_prob : self._dropout_keep_prob}
+        feed_dict.update(self.get_moments_dict())
+        _, ce, moments_out = self._sess.run([self._train_step, self._cross_entropy, self._moments_out],
+                                             feed_dict = feed_dict)
+        self.add_to_moment_history(moments_out)
 
         self._num_examples_trained_on += batch_size
         self.update_stats(ce)
@@ -125,24 +164,30 @@ class Trainer:
 
         batch_zero = True
 
+        self.update_moment_values()
+
         for (image_batch, label_batch) in batches:
+            feed_dict = {self._input_image : image_batch,
+                         self._y_is_iceberg : label_batch,
+                         self._inference : True,
+                         self._keep_prob : 1.0}
+            feed_dict.update(self.get_moments_dict())
             b_acc, b_ce = self._sess.run([self._accuracy, self._cross_entropy],
-                                         feed_dict={self._input_image : image_batch, self._y_is_iceberg : label_batch,
-                                                    self._keep_prob : 1.0})
+                                         feed_dict = feed_dict)
             b_n = image_batch.shape[0]
             acc += b_n*b_acc
             ce += b_n*b_ce
             n += b_n
 
-            if batch_zero:
-                logits = self._sess.run([self._network_logit], feed_dict = {self._input_image : image_batch, self._y_is_iceberg : label_batch,
-                                                                            self._keep_prob : 1.0})
-                #print('logits: {}'.format(logits[0]))
-                for (i, p) in zip(range(1, 6), self._validation_paths):
-                    f = open(p, 'at')
-                    f.write('{}\n'.format(logits[0][i-1, 0])) 
-                    f.close()
-                batch_zero = False
+#            if batch_zero:
+#                logits = self._sess.run([self._network_logit], feed_dict = {self._input_image : image_batch, self._y_is_iceberg : label_batch,
+#                                                                            self._keep_prob : 1.0})
+#                #print('logits: {}'.format(logits[0]))
+#                for (i, p) in zip(range(1, 6), self._validation_paths):
+#                    f = open(p, 'at')
+#                    f.write('{}\n'.format(logits[0][i-1, 0])) 
+#                    f.close()
+#                batch_zero = False
 
         acc /= n
         ce /= n
@@ -236,7 +281,7 @@ if __name__ == '__main__':
     else:
         raise ValueError('Net type {} is unknown.'.format(args.net))
 
-    batch_size = 32
+    batch_size = 16
     trainer = Trainer(net, params, args.logdir, no_validation_set = args.no_validation_set)
     batches_per_epoch = trainer._training_dataset._N_train / batch_size
 
