@@ -79,8 +79,9 @@ class Trainer:
         self._training_seconds = 0.0
         self._validation_seconds = 0.0
 
-        ## Setup the deque we will use to keep aggregated means and variances
-        self._num_batches_to_track = 1604 // 32
+        ## Setup the arrays we will use to keep aggregated means and variances
+        self._num_batches_to_track = 1604 // 64
+        #self._num_batches_to_track = 1
         # This will hold a record of the means and variances for the last N batches
         self._moment_values_history = [[np.zeros(shape = [self._num_batches_to_track] + shape) for shape in layer] for layer in self._net.moment_shapes]
         # Which batch in the cirular list to update next
@@ -113,7 +114,7 @@ class Trainer:
     def add_to_moment_history(self, moments):
         """ Update the appropriate member of the history array,
         and advance the cursor.
-        This should be done after every training round.
+        This should be done after every training round. (?)
         """
         for (history, new) in zip(self._moment_values_history, moments):
             for (x, y) in zip(history, new):
@@ -124,6 +125,17 @@ class Trainer:
         """ Average the means and variances in our array of moment
         histories. This should be done before inference.
         """
+        for i in range(self._num_batches_to_track):
+            image_batch, label_batch = self._training_dataset.get_next_training_batch(batch_size)
+            feed_dict = {self._input_image : image_batch,
+                         self._y_is_iceberg : label_batch,
+                         self._inference : False,
+                         self._keep_prob : 1.0}
+            feed_dict.update(self.get_moments_dict())
+            moments_out = self._sess.run(self._moments_out,
+                                         feed_dict = feed_dict)
+            self.add_to_moment_history(moments_out)
+
         for (av, history) in zip(self._moment_values, self._moment_values_history):
             for (x, y) in zip(av, history):
                 x[:] = np.mean(y, axis = 0)
@@ -144,7 +156,7 @@ class Trainer:
         feed_dict.update(self.get_moments_dict())
         _, ce, moments_out = self._sess.run([self._train_step, self._cross_entropy, self._moments_out],
                                              feed_dict = feed_dict)
-        self.add_to_moment_history(moments_out)
+        #self.add_to_moment_history(moments_out)
 
         self._num_examples_trained_on += batch_size
         self.update_stats(ce)
@@ -156,15 +168,20 @@ class Trainer:
 
         start_time = time.time()
 
+        self.update_moment_values()
+
         batches = self._training_dataset.get_validation_set(batch_size)
 
         n = 0
         acc = 0
         ce = 0
 
-        batch_zero = True
+        #batch_zero = True
 
-        self.update_moment_values()
+        for val in self._moment_values:
+            val = val[1] # Variance
+            mean_var = np.mean(val, axis=None)
+            print('Mean var: {}'.format(mean_var))
 
         for (image_batch, label_batch) in batches:
             feed_dict = {self._input_image : image_batch,
@@ -221,13 +238,19 @@ class Trainer:
                                                      validation_fraction = 0.0)
         batches = test_dataset.get_all_images_without_augmentation(batch_size)
 
+        self.update_moment_values()
+
         f = open(self._test_output_filename, 'wt')
         f.write('id,is_iceberg\n')
 
         for (image_ids, images) in batches:
+            feed_dict = {self._input_image : images,
+                         self._keep_prob : 1.0,
+                         inference : False}
+            feed_dict.update(self.get_moments_dict())
             [batch_ice_logits, batch_ship_logits] = \
                     self._sess.run([self._network_logit, self._ship_logit],
-                                   feed_dict = {self._input_image : images, self._keep_prob : 1.0})
+                                   feed_dict = feed_dict)
             logits_combined = np.concatenate([batch_ice_logits, batch_ship_logits], axis=1)
             c_0 = np.max(logits_combined, axis=1)
             logits_safe = logits_combined - np.stack([c_0, c_0], axis=1)
@@ -269,7 +292,7 @@ if __name__ == '__main__':
             'conv2_channels' : 32,
             'fc1_size' : 1024,
             'fc2_size' : 128,
-            'dropout_keep_prob': 0.8,
+            'dropout_keep_prob': 1.0,
             'l2_penalty' : args.l2penalty
         }
     }
@@ -281,7 +304,7 @@ if __name__ == '__main__':
     else:
         raise ValueError('Net type {} is unknown.'.format(args.net))
 
-    batch_size = 16
+    batch_size = 64
     trainer = Trainer(net, params, args.logdir, no_validation_set = args.no_validation_set)
     batches_per_epoch = trainer._training_dataset._N_train / batch_size
 
@@ -292,7 +315,7 @@ if __name__ == '__main__':
         if i%10 == 0:
             trainer.print_training_stats()
 
-        if i%25 == 0 and not args.no_validation_set:
+        if (i > batches_per_epoch) and i%25 == 0 and not args.no_validation_set:
             trainer.get_and_print_validation_stats(batch_size)
 
     if args.with_predictions:

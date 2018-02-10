@@ -55,22 +55,12 @@ class StatNet2:
             self._W_fc_3 = _make_weight([fc_layer_2_size, 1])
             self._b_fc_3 = _make_bias([1])
 
-            # Inference moments - these should be populated by a run through the training dataset
-            self._mean_conv_1_inf = tf.Variable(tf.ones([conv_layer_1_channels]))
-            self._var_conv_1_inf = tf.Variable(tf.ones([conv_layer_1_channels]))
-            self._mean_conv_2_inf = tf.Variable(tf.ones([conv_layer_2_channels]))
-            self._var_conv_2_inf = tf.Variable(tf.ones([conv_layer_2_channels]))
-            self._mean_fc_1_inf = tf.Variable(tf.ones([fc_layer_1_size]))
-            self._var_fc_1_inf = tf.Variable(tf.ones([fc_layer_1_size]))
-            self._mean_fc_2_inf = tf.Variable(tf.ones([fc_layer_2_size]))
-            self._var_fc_2_inf = tf.Variable(tf.ones([fc_layer_2_size]))
-
             self._built = True
 
     @property
     def moment_shapes(self):
-        return [[[self._input_shape[0], self._input_shape[1], self._params['conv1_channels']]]*2,
-                [[(self._input_shape[0] + 1)//2, (self._input_shape[1] + 1)//2, self._params['conv2_channels']]]*2,
+        return [[[self._params['conv1_channels']]]*2,
+                [[self._params['conv2_channels']]]*2,
                 [[self._params['fc1_size']]]*2, [[self._params['fc2_size']]]*2]
 
     def connect(self, x, keep_prob, inference, moments):
@@ -80,7 +70,7 @@ class StatNet2:
 
         def connect_bn_conv_layer(u, W, mean_in, var_in, beta, gamma, name):
             x = tf.nn.conv2d(u, W, strides=[1,1,1,1], padding = 'SAME', name = name + "_conv")
-            mean_batch, var_batch = tf.nn.moments(x, axes=[0], name = name + "_mom")
+            mean_batch, var_batch = tf.nn.moments(x, axes=[0, 1, 2], name = name + "_mom")
             moment_output = [mean_batch, var_batch]
             mean_to_use = tf.cond(inference, true_fn = lambda: mean_in, false_fn = lambda: mean_batch)
             var_to_use  = tf.cond(inference, true_fn = lambda: var_in,  false_fn = lambda: var_batch )
@@ -133,7 +123,11 @@ class StatNet2:
                         + tf.nn.l2_loss(self._W_conv_2) \
                         + tf.nn.l2_loss(self._W_fc_1) \
                         + tf.nn.l2_loss(self._W_fc_2) \
-                        + tf.nn.l2_loss(self._W_fc_3)   + tf.nn.l2_loss(self._b_fc_3)
+                        + tf.nn.l2_loss(self._W_fc_3)   + tf.nn.l2_loss(self._b_fc_3) \
+                        + tf.nn.l2_loss(self._gamma_conv_1) + tf.nn.l2_loss(self._beta_conv_1) \
+                        + tf.nn.l2_loss(self._gamma_conv_2) + tf.nn.l2_loss(self._beta_conv_2) \
+                        + tf.nn.l2_loss(self._gamma_fc_1) + tf.nn.l2_loss(self._beta_fc_1) \
+                        + tf.nn.l2_loss(self._gamma_fc_2) + tf.nn.l2_loss(self._beta_fc_2)
 
         return total_l2_loss
 
@@ -163,10 +157,10 @@ class StatNet2Tests(unittest.TestCase):
             x = tf.placeholder(shape=[13, 75, 75, 2], dtype=tf.float32)
             keep_prob = tf.placeholder(shape = (), dtype = tf.float32)
             inference = tf.placeholder(shape = (), dtype = tf.bool)
-            moments = [[tf.placeholder(shape = [75, 75, self.default_params['conv1_channels']], dtype = tf.float32),
-                        tf.placeholder(shape = [75, 75, self.default_params['conv1_channels']], dtype = tf.float32)],
-                       [tf.placeholder(shape = [38, 38, self.default_params['conv2_channels']], dtype = tf.float32),
-                        tf.placeholder(shape = [38, 38, self.default_params['conv2_channels']], dtype = tf.float32)],
+            moments = [[tf.placeholder(shape = [self.default_params['conv1_channels']], dtype = tf.float32),
+                        tf.placeholder(shape = [self.default_params['conv1_channels']], dtype = tf.float32)],
+                       [tf.placeholder(shape = [self.default_params['conv2_channels']], dtype = tf.float32),
+                        tf.placeholder(shape = [self.default_params['conv2_channels']], dtype = tf.float32)],
                        [tf.placeholder(shape = [self.default_params['fc1_size']], dtype = tf.float32),
                         tf.placeholder(shape = [self.default_params['fc1_size']], dtype = tf.float32)],
                        [tf.placeholder(shape = [self.default_params['fc2_size']], dtype = tf.float32),
@@ -177,7 +171,6 @@ class StatNet2Tests(unittest.TestCase):
             self.assertEqual(len(moments), len(moments_out))
             for (moment, moment_out) in zip(moments, moments_out):
                 self.assertEqual(len(moment_out), 2)
-                self.assertEqual(moment[0].shape, moment_out[0].shape)
                 self.assertEqual(moment[0].shape, moment_out[0].shape)
                 self.assertEqual(moment[1].shape, moment_out[1].shape)
 
