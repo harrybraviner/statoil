@@ -287,9 +287,9 @@ if __name__ == '__main__':
         'net_params' : {
             'net' : args.net,
             'conv1_size' : 5,
-            'conv1_channels' : 32,
+            'conv1_channels' : 16,
             'conv2_size' : 5,
-            'conv2_channels' : 32,
+            'conv2_channels' : 16,
             'fc1_size' : 1024,
             'fc2_size' : 128,
             'dropout_keep_prob': 1.0,

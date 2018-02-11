@@ -84,7 +84,7 @@ class StatNet1:
 
         self._output_logit = tf.matmul(self._h_fc_2_dropped, self._W_fc_3) + self._b_fc_3
 
-        return self._output_logit
+        return self._output_logit, [tf.zeros(shape=(), dtype=tf.float32)]
 
     def get_l2_weights(self):
         if not self._built:
