@@ -42,12 +42,12 @@ class Trainer:
 
             self._test_output_filename = os.path.join(path_for_logging, 'submission.csv')
 
-            # Temporary hack - remove later
-            self._validation_paths = [os.path.join(path_for_logging, 'val{}.dat'.format(i)) for i in range(1,6)]
-            for x in self._validation_paths:
-                f = open(x, 'wt')
-                f.write('#logit for iceberg\n')
-                f.close()
+#            # Temporary hack - remove later
+#            self._validation_paths = [os.path.join(path_for_logging, 'val{}.dat'.format(i)) for i in range(1,6)]
+#            for x in self._validation_paths:
+#                f = open(x, 'wt')
+#                f.write('#logit for iceberg\n')
+#                f.close()
         else:
             self._train_stats_filename = None
             self._validation_stats_filename = None
