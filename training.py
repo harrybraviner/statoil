@@ -16,6 +16,8 @@ class Trainer:
         self._net = network
         self._dropout_keep_prob = params['net_params']['dropout_keep_prob']
         self._l2_penalty = params['net_params']['l2_penalty']
+        decay_steps = params['net_params']['decay_steps']
+        initial_learning_rate = params['net_params']['initial_learning_rate']
 
         self._params = params
 
@@ -70,7 +72,10 @@ class Trainer:
         self._l2_cost = self._l2_penalty * self._net.get_l2_weights()
         self._accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(self._y_hat, axis=1, output_type=tf.int32), self._y_is_iceberg), dtype=tf.float32))
 
-        self._train_step = tf.train.AdamOptimizer().minimize(self._cross_entropy + self._l2_cost)
+        global_step = tf.Variable(0, trainable=False)
+        self._learning_rate = tf.train.exponential_decay(initial_learning_rate, global_step,
+                                                         decay_steps = decay_steps, decay_rate = 0.5)
+        self._train_step = tf.train.AdamOptimizer(self._learning_rate).minimize(self._cross_entropy + self._l2_cost)
 
         ## Setup stats to track the training
         self._smoothing_decay = 0.95
@@ -293,6 +298,8 @@ if __name__ == '__main__':
             'fc1_size' : 1024,
             'fc2_size' : 128,
             'dropout_keep_prob': 1.0,
+            'initial_learning_rate' : 5e-4,
+            'decay_steps' : 200,
             'l2_penalty' : args.l2penalty
         }
     }
