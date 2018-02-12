@@ -77,7 +77,7 @@ class StatNet2:
             x_hat = tf.nn.batch_normalization(x, mean_to_use, var_to_use, beta, gamma,
                                               self._epsilon, name = name + "_bn")
             act = tf.nn.relu(x_hat, name = name + "_act")
-            pool = tf.nn.max_pool(act, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name = name + "_act")
+            pool = tf.nn.max_pool(act, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name = name + "_pool")
             return pool, moment_output
 
         def connect_fc_layer(u, W, mean_in, var_in, beta, gamma, name):
