@@ -53,16 +53,20 @@ class StatoilTrainingDataset:
     def __init__(self, filename='./data/train.json', validation_fraction=0.3, params = None):
         if params is None:
             params = {
-                'shuffle' : True
+                'shuffle' : True,
+                'flips' : False
             }
 
         self._shuffle_examples = params['shuffle']
+        self._flips = params['flips']
 
         self._dataset = StatoilDataset(filename, purpose = "training", augmentation_params = params)
 
         self._N_total = self._dataset.num_images
         self._N_validation = int(self._N_total*validation_fraction)
         self._N_train = self._N_total - self._N_validation
+
+        np.random.seed(1234)
 
         if self._shuffle_examples:
             self._train_indices = set(np.random.choice(self._N_total, size = self._N_train, replace = False))
@@ -116,8 +120,22 @@ class StatoilTrainingDataset:
         indices = self.get_next_training_indices(batch_size)
         return self.get_batch(indices, augmentation = True)
 
+    def augment_image(self, image):
+        if self._flips:
+            if np.random.randint(0, 2) == 1:
+                image = np.flip(image, axis=0)
+            else:
+                image = image
+            if np.random.randint(0, 2) == 1:
+                image = np.flip(image, axis=1)
+            else:
+                image = image
+        return image
+
     def get_batch(self, indices, augmentation = False):
         images = np.array([self._dataset.get_image_from_index(i) for i in indices])
+        if augmentation:
+            images = np.array([self.augment_image(im) for im in images])
         labels = np.array([self._dataset.get_label_from_index(i) for i in indices])
         return (images, labels)
 

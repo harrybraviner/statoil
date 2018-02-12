@@ -282,7 +282,7 @@ if __name__ == '__main__':
 
     params = {
         'dataset_params' : {
-            'flips' : False,
+            'flips' : True,
             'demean' : False,
             'range_normalize' : True,
             'exponentiate_base' : None,
@@ -298,7 +298,7 @@ if __name__ == '__main__':
             'fc1_size' : 1024,
             'fc2_size' : 128,
             'dropout_keep_prob': 1.0,
-            'initial_learning_rate' : 5e-4,
+            'initial_learning_rate' : 1e-4,
             'decay_steps' : 200,
             'l2_penalty' : args.l2penalty
         }
